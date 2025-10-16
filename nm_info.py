@@ -24,15 +24,67 @@ from asyncio import run as async_run
 
 HIDDEN_SSID_STRING = "<***hidden***>"
 
+async def get_ethernet_devices(interface=None):
+    """
+    Asynchronously retrieves a list of managed Ethernet network devices.
+
+    Args:
+        interface (str, optional): The name of a specific network interface to filter the devices. 
+            If provided, only devices matching this interface name are returned.
+
+    Returns:
+        list: A list of NetworkDeviceWired objects representing managed Ethernet devices. 
+            If 'interface' is specified, only devices with the matching interface name are included.
+
+    Raises:
+        Any exceptions raised by network_manager.get_devices() or device property access.
+    """
+    all_devices = await network_manager.get_devices()
+    ethernet_devices = []
+    for device_path in all_devices:
+        device = NetworkDeviceWired(device_path)
+        device_type = await device.device_type
+        device_managed = await device.managed
+        if device_type == DeviceType.ETHERNET and device_managed:
+            ethernet_devices.append(device)
+    if interface:
+        ethernet_devices = [d for d in ethernet_devices if (await d.interface) == interface]
+    return ethernet_devices
+
+async def get_wifi_devices(interface=None):
+    """
+    Asynchronously retrieves a list of managed Wi-Fi network devices.
+
+    Args:
+        interface (str, optional): The name of a specific network interface to filter the devices. 
+            If provided, only devices matching this interface name are returned.
+
+    Returns:
+        list: A list of NetworkDeviceWireless objects representing managed Wi-Fi devices. 
+            If 'interface' is specified, only devices with the matching interface name are included.
+
+    Raises:
+        Any exceptions raised by network_manager.get_devices() or device property access.
+    """
+    all_devices = await network_manager.get_devices()
+    wifi_devices = []
+    for device_path in all_devices:
+        device = NetworkDeviceWireless(device_path)
+        device_type = await device.device_type
+        device_managed = await device.managed
+        if device_type == DeviceType.WIFI and device_managed:
+            wifi_devices.append(device)
+    if interface:
+        wifi_devices = [d for d in wifi_devices if (await d.interface) == interface]
+    return wifi_devices
+
 async def list_connections():
     """
     List all saved network connections using NetworkManager.
     Returns:
         List of dicts with connection name, UUID, and type.
     """
-    
     networwork_manager_settings = NetworkManagerSettings()
-    
     connections = []
     for connection_path in await networwork_manager_settings.connections:
         connection = NetworkConnectionSettings(connection_path)
@@ -54,16 +106,9 @@ async def create_new_wifi_connection(ssid, password, interface=None):
     Returns:
         True if creation is successful, False otherwise.
     """
-    all_devices = await network_manager.get_devices()
-    
-    wifi_devices = []
-    
-    for device_path in all_devices:
-        device = NetworkDeviceWireless(device_path)
-        device_type = await device.device_type
-        if device_type == DeviceType.WIFI:
-            wifi_devices.append(device)
-            
+
+    wifi_devices = await get_wifi_devices(interface)
+
     print("Found " + str(len(wifi_devices)) + " Wi-Fi devices")
                 
     if interface:
@@ -137,17 +182,8 @@ async def wifi_connect (ssid, password, interface=None):
     Returns:
         True if connection is successful, False otherwise.
     """
-    all_devices = await network_manager.get_devices()
-    
-    print("Found " + str(len(all_devices)) + " devices")
-    
-    wifi_devices = []
-    
-    for device_path in all_devices:
-        device = NetworkDeviceWireless(device_path)
-        device_type = await device.device_type
-        if device_type == DeviceType.WIFI:
-            wifi_devices.append(device)
+    wifi_devices = await get_wifi_devices(interface)
+
                 
     if interface:
         wifi_devices = [d for d in wifi_devices if d.interface == interface]
@@ -190,13 +226,8 @@ async def activate_wifi_connection(ssid, interface=None):
     Returns:
         bool: True if activation is successful, False otherwise.
     """
-    all_devices = await network_manager.get_devices()
-    wifi_devices = []
-    for device_path in all_devices:
-        device = NetworkDeviceWireless(device_path)
-        device_type = await device.device_type
-        if device_type == DeviceType.WIFI:
-            wifi_devices.append(device)
+    wifi_devices = await get_wifi_devices(interface)
+
     if interface:
         wifi_devices = [d for d in wifi_devices if (await d.interface) == interface]
     if not wifi_devices:
@@ -236,9 +267,6 @@ def list_all_connections():
     Returns:
         List of dicts with connection name, UUID, and type.
     """
-    
-    NetworkConnectionSettings
-    
     connections = []
     for connection_path in network_manager.settings.ConnectionSettings:
         connection = NetworkConnectionSettings(connection_path)
@@ -302,13 +330,9 @@ async def list_wifi_networks(interface=None):
         List of dicts with SSID, BSSID, and signal strength.
     """
     print("Listing WiFi networks...")
-    
     all_devices = await network_manager.get_devices()
-    
     print("Found " + str(len(all_devices)) + " devices")
-    
     wifi_devices = []
-    
     for device_path in all_devices:
         device = NetworkDeviceWireless(device_path)
         device_type = await device.device_type
@@ -317,33 +341,26 @@ async def list_wifi_networks(interface=None):
     if interface:
         wifi_devices = [d for d in wifi_devices if (await d.interface) == interface]
     results = []
-    
-    
     for wifi_device in wifi_devices:
         ap_paths = await wifi_device.get_all_access_points()
         print(f"Found {len(ap_paths)} access points on interface {await wifi_device.interface}")
-        ap_interfaces = []
-
         for ap_path in ap_paths:
             ap_interface = AccessPoint(ap_path)
-            ap_interfaces.append(ap_interface)
-            
-        for ap_interface in ap_interfaces:
             ssid = await ap_interface.ssid
             if not ssid:
                 ssid = HIDDEN_SSID_STRING
-            else: 
+            else:
                 ssid = ssid.decode('utf-8')
             results.append({
-                 'ssid': ssid,
-                 'bssid': await ap_interface.hw_address,
-                 'strength': await ap_interface.strength
+                'ssid': ssid,
+                'bssid': await ap_interface.hw_address,
+                'strength': await ap_interface.strength
             })
     return results
       
 
 
-async def scan_wifi_networks(interface=None, timeout=60, result_age_limit=5):
+async def scan_wifi_networks(interface=None, timeout=60, result_age_limit=30):
     """
     Initiate a WiFi scan using python-sdbus-networkmanager (async) and wait for scan results.
     Args:
@@ -353,18 +370,9 @@ async def scan_wifi_networks(interface=None, timeout=60, result_age_limit=5):
     Returns:
         list: List of dicts with SSID, BSSID, and signal strength for each detected network.
     """
-    all_devices = await network_manager.get_devices()
-    wifi_devices = []
-    for device_path in all_devices:
-        device = NetworkDeviceWireless(device_path)
-        device_type = await device.device_type
-        if device_type == DeviceType.WIFI:
-            wifi_devices.append(device)
-    if interface:
-        wifi_devices = [d for d in wifi_devices if (await d.interface) == interface]
-    if not wifi_devices:
-        return []
     
+    wifi_devices = await get_wifi_devices(interface)
+   
     for device in wifi_devices:
         last_scan_time = int(await device.last_scan / 1000)
         current_time = int(time.monotonic())
@@ -418,35 +426,69 @@ async def get_wired_network_info(interface=None):
     Returns:
         List of dicts with interface name, MAC address, and IP addresses.
     """
-    
+
+    print("Calling get_ethernet_devices...")
+    # ethernet_devices = await get_ethernet_devices(interface)
+    print("Getting all devices from NetworkManager...")
     all_devices = await network_manager.get_devices()
+    print(f"Total devices found: {len(all_devices)}")
     ethernet_devices = []
-    
     for device_path in all_devices:
+        print(f"Processing device path: {device_path}")
         device = NetworkDeviceWired(device_path)
-        device_type = await device.device_type
-        if device_type == DeviceType.ETHERNET:
-            ethernet_devices.append(device)
-                
+        try:
+            device_type = await asyncio.wait_for(device.device_type, timeout=2)
+            print(f"  Device type: {device_type}")
+            device_managed = await asyncio.wait_for(device.managed, timeout=2)
+            print(f"  Device managed: {device_managed}")
+            if device_type == DeviceType.ETHERNET and device_managed:
+                print(f"  -> Adding ethernet device: {device_path}")
+                ethernet_devices.append(device)
+        except asyncio.TimeoutError:
+            print(f"  Timeout waiting for device_type or managed for {device_path}, skipping device.")
+        except Exception as e:
+            print(f"  Error getting device_type or managed for {device_path}: {e}, skipping device.")
     if interface:
+        print(f"Filtering ethernet devices for interface: {interface}")
+        ethernet_devices = [d for d in ethernet_devices if (await d.interface) == interface]
+    print(f"Ethernet devices after filtering: {[await d.interface for d in ethernet_devices]}")
+
+    print(f"Got {len(ethernet_devices)} ethernet devices")
+
+    if interface:
+        print(f"Filtering for interface: {interface}")
         ethernet_devices = [d for d in ethernet_devices if d.interface == interface]
-        
+
     print("Ethernet devices:", [await d.interface for d in ethernet_devices])
-        
+
     results = []
     for device in ethernet_devices:
+        print(f"Processing device: {device}")
+        print("  Awaiting device.ip4_config...")
         ip4_conf_path = await device.ip4_config
+        print(f"  ip4_conf_path: {ip4_conf_path}")
         addresses = []
         if ip4_conf_path and ip4_conf_path != '/':
+            print(f"  Creating IPv4Config for {ip4_conf_path}")
             ip4_conf = IPv4Config(ip4_conf_path)
-            for address_data in await ip4_conf.address_data:
+            print("  Awaiting ip4_conf.address_data...")
+            address_data_list = await ip4_conf.address_data
+            print(f"  Got address_data_list: {address_data_list}")
+            for address_data in address_data_list:
+                print(f"    Address data: {address_data}")
                 addresses.append(f"{address_data['address'][1]}/{address_data['prefix'][1]}")
+        print("  Awaiting device.interface...")
+        iface = await device.interface
+        print(f"  Interface: {iface}")
+        print("  Awaiting device.hw_address...")
+        mac = await device.hw_address
+        print(f"  MAC address: {mac}")
         results.append({
-            'interface': await device.interface,
-            'mac_address': await device.hw_address,
+            'interface': iface,
+            'mac_address': mac,
             'ip_addresses': addresses
         })
-                        
+    print(f"Returning results: {results}")
     return results
 
 async def get_wireless_network_info(interface=None):
@@ -459,20 +501,14 @@ async def get_wireless_network_info(interface=None):
     """
     all_devices = await network_manager.get_devices()
     wifi_devices = []
-    
     for device_path in all_devices:
         device = NetworkDeviceGeneric(device_path)
         device_type = await device.device_type
         if device_type == DeviceType.WIFI:
             wifi_devices.append(device)
-                
     if interface:
-        wifi_devices = [d for d in wifi_devices if d.interface == interface]
-        
+        wifi_devices = [d for d in wifi_devices if (await d.interface) == interface]
     print("Wi-Fi devices:", [await d.interface for d in wifi_devices])
-        
-    if interface:
-        wifi_devices = [d for d in wifi_devices if d.interface == interface]
     results = []
     for device in wifi_devices:
         ip4_conf_path = await device.ip4_config
@@ -500,19 +536,19 @@ network_manager = NetworkManager()
 
 async def test() -> None:
 
-    # try:
-    #     wired_interfaces = await get_wired_network_info()
-    #     for iface in wired_interfaces:
-    #         print(iface)
-    # except Exception as e:
-    #     print(f"Error getting wired network info: {e}")
+    try:
+        wired_interfaces = await get_wired_network_info()
+        for iface in wired_interfaces:
+            print(iface)
+    except Exception as e:
+        print(f"Error getting wired network info: {e}")
         
-    # try:
-    #     wifi_interfaces = await get_wireless_network_info()
-    #     for iface in wifi_interfaces:
-    #         print(iface)
-    # except Exception as e:
-    #     print(f"Error getting wireless network info: {e}")
+    try:
+        wifi_interfaces = await get_wireless_network_info()
+        for iface in wifi_interfaces:
+            print(iface)
+    except Exception as e:
+        print(f"Error getting wireless network info: {e}")
         
     try: 
         wifi_network_list = await scan_wifi_networks()
@@ -525,12 +561,12 @@ async def test() -> None:
             print(net)
     except Exception as e:
         print(f"Error scanning WiFi networks: {e}") 
-    #     available_networks = await list_wifi_networks()
-    #     print("Found " + str(len(available_networks)) + " networks")
-    #     for net in available_networks:
-    #         print(net)
-    # except Exception as e:
-    #     print(f"Error listing WiFi networks: {e}")
+        available_networks = await list_wifi_networks()
+        print("Found " + str(len(available_networks)) + " networks")
+        for net in available_networks:
+            print(net)
+    except Exception as e:
+        print(f"Error listing WiFi networks: {e}")
         
     # try: 
     #     await create_new_wifi_connection(ssid=b'Cargt Guest', password='J+P4evEr')
@@ -550,4 +586,4 @@ async def test() -> None:
     #     print(f"Error activating connection: {e}")
     
 
-async_run(test())    
+# async_run(test())
