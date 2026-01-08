@@ -1,0 +1,12 @@
+[Unit]
+Description=NetworkManager MQTT service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/nm_info_mqtt.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
