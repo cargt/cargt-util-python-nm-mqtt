@@ -21,7 +21,7 @@ class NetworkManagerMQTT:
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.topic_prefix = topic_prefix
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.loop = None  # Will be set in main block
@@ -35,7 +35,7 @@ class NetworkManagerMQTT:
         self.client.loop_stop()
         self.client.disconnect()
 
-    def on_connect(self, client, userdata, flags, rc):
+    def on_connect(self, client, userdata, flags, rc, properties=None):
         print(f"Connected to MQTT broker with result code {rc}")
         client.subscribe(f"{self.topic_prefix}#")
 
