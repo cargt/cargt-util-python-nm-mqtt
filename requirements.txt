@@ -1,3 +1,4 @@
+sdbus
 paho-mqtt
 networkmanager-python
-sdbus-networkmanager
+--only-binary=:all: sdbus-networkmanager
