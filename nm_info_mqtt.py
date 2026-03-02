@@ -29,14 +29,13 @@ class NetworkManagerMQTT:
         self.client.on_message = self.on_message
         self.loop = None  # Will be set in main block
 
-        # GUI interface layer: subscribe to gui_tx_prefix + nm/#
-        self.client.message_callback_add(f"{self.gui_tx_prefix}nm/#", self.on_gui_tx)
-        self.client.subscribe(f"{self.gui_tx_prefix}nm/#")
-
     def start(self):
         self.client.connect(self.broker_host, self.broker_port, 60)
         self.client.loop_start()
         self.client.subscribe(f"{self.topic_prefix}#")
+        # GUI interface layer: subscribe to gui_tx_prefix + nm/#
+        self.client.message_callback_add(f"{self.gui_tx_prefix}nm/#", self.on_gui_tx)
+        self.client.subscribe(f"{self.gui_tx_prefix}nm/#")
 
     def stop(self):
         self.client.loop_stop()
@@ -45,6 +44,9 @@ class NetworkManagerMQTT:
     def on_connect(self, client, userdata, flags, rc, properties=None):
         print(f"Connected to MQTT broker with result code {rc}")
         client.subscribe(f"{self.topic_prefix}#")
+        # Re-subscribe to GUI topics on reconnect
+        client.message_callback_add(f"{self.gui_tx_prefix}nm/#", self.on_gui_tx)
+        client.subscribe(f"{self.gui_tx_prefix}nm/#")
 
     def on_message(self, client, userdata, msg):
         topic = msg.topic
