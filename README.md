@@ -35,3 +35,4 @@ uap0 [F6:3B:6C:70:E6:BC]
 wfd0 [76:18:1E:19:6B:19]
 ```
 
+See Readme-mqttTopicsAndFunctionality.md for full documentation.
