@@ -141,4 +141,10 @@ if __name__ == "__main__":
         loop.run_forever()
     except KeyboardInterrupt:
         nm_mqtt.stop()
+        # Cancel all pending tasks to avoid 'Task was destroyed but it is pending!'
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         loop.stop()
+        loop.close()
