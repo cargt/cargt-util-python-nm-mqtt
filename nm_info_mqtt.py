@@ -8,6 +8,7 @@ from nm_info import (
     list_wifi_networks,
     get_wired_network_info,
     get_wireless_network_info,
+    get_system_info,
     filter_network_list,
     # The following functions can be implemented similarly if needed
     # create_new_wifi_connection,
@@ -61,6 +62,8 @@ class NetworkManagerMQTT:
             asyncio.run_coroutine_threadsafe(self.handle_wired_info(payload), self.loop)
         elif topic == f"{self.topic_prefix}wireless_info":
             asyncio.run_coroutine_threadsafe(self.handle_wireless_info(payload), self.loop)
+        elif topic == f"{self.topic_prefix}system_info":
+            asyncio.run_coroutine_threadsafe(self.handle_system_info(payload), self.loop)
         # Add more topic handlers as needed
 
     def on_gui_tx(self, client, userdata, msg):
@@ -78,6 +81,8 @@ class NetworkManagerMQTT:
             asyncio.run_coroutine_threadsafe(self.handle_wired_info(payload, gui=True, orig_topic=msg.topic), self.loop)
         elif nm_topic == "nm/wireless_info":
             asyncio.run_coroutine_threadsafe(self.handle_wireless_info(payload, gui=True, orig_topic=msg.topic), self.loop)
+        elif nm_topic == "nm/system_info":
+            asyncio.run_coroutine_threadsafe(self.handle_system_info(payload, gui=True, orig_topic=msg.topic), self.loop)
         # Add more topic handlers as needed
 
     async def handle_scan_wifi(self, payload, gui=False, orig_topic=None):
@@ -119,6 +124,12 @@ class NetworkManagerMQTT:
         interface = payload if payload else None
         info = await get_wireless_network_info(interface)
         topic = f"{self.gui_rx_nm_prefix}wireless_info_resp" if gui else f"{self.topic_prefix}wireless_info_resp"
+        self.publish(topic, json.dumps(info))
+
+    async def handle_system_info(self, payload, gui=False, orig_topic=None):
+        print("Handling system_info")
+        info = await get_system_info()
+        topic = f"{self.gui_rx_nm_prefix}system_info_resp" if gui else f"{self.topic_prefix}system_info_resp"
         self.publish(topic, json.dumps(info))
 
     def publish(self, topic, message):

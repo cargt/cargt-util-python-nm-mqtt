@@ -17,11 +17,13 @@ Published Topics
   - nm/list_wifi_resp
   - nm/wired_info_resp
   - nm/wireless_info_resp
+  - nm/system_info_resp
 - GUI responses:
   - gui/rx/nm/scan_wifi_resp
   - gui/rx/nm/list_wifi_resp
   - gui/rx/nm/wired_info_resp
   - gui/rx/nm/wireless_info_resp
+  - gui/rx/nm/system_info_resp
 
 Command Topics and Functionality
 
@@ -69,6 +71,43 @@ Command Topics and Functionality
 - Functionality:
   - Retrieves information about the wireless network interface.
   - Publishes the info as a JSON object to the response topic.
+
+5. system_info
+- Command:
+  - nm/system_info (legacy)
+  - gui/tx/nm/system_info (GUI)
+- Payload:
+  - Ignored — publish with empty payload or any value (e.g. `{}` or `{"command": "get_info"}`).
+- Response:
+  - nm/system_info_resp (legacy)
+  - gui/rx/nm/system_info_resp (GUI)
+- Functionality:
+  - Retrieves static system information about the host machine.
+  - Publishes a single JSON object to the response topic.
+- Response JSON fields:
+  - `Device Name` — Pretty hostname from /etc/machine-info, falls back to system hostname.
+  - `Hostname` — System hostname.
+  - `Operating System` — OS description from lsb_release, falls back to platform string.
+  - `Kernel` — Kernel name and release (e.g. "Linux 5.15.0-91-generic").
+  - `Architecture` — CPU architecture (e.g. "x86_64").
+  - `Processor` — CPU model string from /proc/cpuinfo.
+  - `Memory` — Total RAM as human-readable string (e.g. "16.0 GB").
+  - `Graphics` — First VGA/3D controller from lspci; "Unknown" if lspci unavailable.
+  - `Disk Space` — Total root filesystem size as human-readable string (e.g. "512 GB").
+- Example response:
+  ```json
+  {
+    "Device Name": "Linux Box",
+    "Hostname": "cargt-device-01",
+    "Operating System": "Ubuntu 22.04.3 LTS",
+    "Kernel": "Linux 5.15.0-91-generic",
+    "Architecture": "x86_64",
+    "Processor": "Intel Core i7-10700K @ 3.80GHz",
+    "Memory": "16.0 GB",
+    "Graphics": "Intel UHD Graphics 630",
+    "Disk Space": "512 GB"
+  }
+  ```
 
 Summary
 - The backend listens for both legacy and GUI-prefixed commands.

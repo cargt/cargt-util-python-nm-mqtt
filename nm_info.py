@@ -4,6 +4,10 @@ import time
 import asyncio
 import uuid
 import asyncio
+import platform
+import subprocess
+import os
+from pathlib import Path
 
 from sdbus_async.networkmanager import (
     NetworkManager,
@@ -679,6 +683,99 @@ async def get_wireless_network_info(interface=None):
 
 sdbus.set_default_bus(sdbus.sd_bus_open_system())
 network_manager = NetworkManager()
+
+
+def _get_pretty_hostname() -> str:
+    """Read PRETTY_HOSTNAME from /etc/machine-info, fall back to platform.node()."""
+    try:
+        machine_info = Path("/etc/machine-info").read_text()
+        for line in machine_info.splitlines():
+            if line.startswith("PRETTY_HOSTNAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return platform.node()
+
+
+async def get_system_info() -> dict:
+    """Assemble a system information dictionary."""
+    # Device Name
+    device_name = _get_pretty_hostname()
+
+    # Hostname
+    hostname = platform.node()
+
+    # Operating System
+    try:
+        os_info = subprocess.check_output(
+            ["lsb_release", "-d"], text=True, stderr=subprocess.DEVNULL
+        ).split(":", 1)[1].strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        os_info = platform.platform()
+
+    # Kernel
+    kernel = f"{platform.system()} {platform.release()}"
+
+    # Architecture
+    architecture = platform.machine()
+
+    # Processor
+    try:
+        processor = platform.processor()
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if "model name" in line:
+                    processor = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        processor = platform.processor()
+
+    # Memory
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = int(line.split()[1]) * 1024
+                    break
+        memory = f"{mem_total / 1e9:.1f} GB"
+    except OSError:
+        memory = "Unknown"
+
+    # Graphics
+    try:
+        lspci_output = subprocess.check_output(
+            ["lspci"], text=True, stderr=subprocess.DEVNULL
+        )
+        graphics = next(
+            (
+                line.split(":", 2)[2].strip()
+                for line in lspci_output.splitlines()
+                if "VGA" in line or "3D" in line
+            ),
+            "Unknown",
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        graphics = "Unknown"
+
+    # Disk Space
+    try:
+        st = os.statvfs("/")
+        disk_total = st.f_blocks * st.f_frsize
+        disk_space = f"{disk_total / 1e9:.0f} GB"
+    except OSError:
+        disk_space = "Unknown"
+
+    return {
+        "Device Name": device_name,
+        "Hostname": hostname,
+        "Operating System": os_info,
+        "Kernel": kernel,
+        "Architecture": architecture,
+        "Processor": processor,
+        "Memory": memory,
+        "Graphics": graphics,
+        "Disk Space": disk_space,
+    }
 
 async def test() -> None:
 
