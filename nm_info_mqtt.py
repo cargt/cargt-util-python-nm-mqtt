@@ -3,7 +3,9 @@ import asyncio
 import json
 import paho.mqtt.client as mqtt
 import re
+import traceback
 from nm_info import (
+    network_manager,
     scan_wifi_networks,
     list_wifi_networks,
     get_wired_network_info,
@@ -55,16 +57,28 @@ class NetworkManagerMQTT:
         print(f"Received message on {topic}: {payload}")
         # Dispatch based on topic
         if topic == f"{self.topic_prefix}scan_wifi":
-            asyncio.run_coroutine_threadsafe(self.handle_scan_wifi(payload), self.loop)
+            self._submit(self.handle_scan_wifi(payload))
         elif topic == f"{self.topic_prefix}list_wifi":
-            asyncio.run_coroutine_threadsafe(self.handle_list_wifi(payload), self.loop)
+            self._submit(self.handle_list_wifi(payload))
         elif topic == f"{self.topic_prefix}wired_info":
-            asyncio.run_coroutine_threadsafe(self.handle_wired_info(payload), self.loop)
+            self._submit(self.handle_wired_info(payload))
         elif topic == f"{self.topic_prefix}wireless_info":
-            asyncio.run_coroutine_threadsafe(self.handle_wireless_info(payload), self.loop)
+            self._submit(self.handle_wireless_info(payload))
         elif topic == f"{self.topic_prefix}system_info":
-            asyncio.run_coroutine_threadsafe(self.handle_system_info(payload), self.loop)
+            self._submit(self.handle_system_info(payload))
         # Add more topic handlers as needed
+
+    def _submit(self, coro):
+        # Run a handler on the asyncio loop. Without the callback an exception
+        # in the handler is dropped silently and the client never gets a reply.
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        future.add_done_callback(self._log_handler_error)
+
+    @staticmethod
+    def _log_handler_error(future):
+        if not future.cancelled() and future.exception() is not None:
+            exc = future.exception()
+            print("Handler failed:", "".join(traceback.format_exception(exc)))
 
     def on_gui_tx(self, client, userdata, msg):
         # Map gui_tx_prefix + nm/xxx to nm/xxx
@@ -74,15 +88,15 @@ class NetworkManagerMQTT:
         # Dispatch as if received on nm/xxx
         # Only support known nm/ topics for now
         if nm_topic == "nm/scan_wifi":
-            asyncio.run_coroutine_threadsafe(self.handle_scan_wifi(payload, gui=True, orig_topic=msg.topic), self.loop)
+            self._submit(self.handle_scan_wifi(payload, gui=True, orig_topic=msg.topic))
         elif nm_topic == "nm/list_wifi":
-            asyncio.run_coroutine_threadsafe(self.handle_list_wifi(payload, gui=True, orig_topic=msg.topic), self.loop)
+            self._submit(self.handle_list_wifi(payload, gui=True, orig_topic=msg.topic))
         elif nm_topic == "nm/wired_info":
-            asyncio.run_coroutine_threadsafe(self.handle_wired_info(payload, gui=True, orig_topic=msg.topic), self.loop)
+            self._submit(self.handle_wired_info(payload, gui=True, orig_topic=msg.topic))
         elif nm_topic == "nm/wireless_info":
-            asyncio.run_coroutine_threadsafe(self.handle_wireless_info(payload, gui=True, orig_topic=msg.topic), self.loop)
+            self._submit(self.handle_wireless_info(payload, gui=True, orig_topic=msg.topic))
         elif nm_topic == "nm/system_info":
-            asyncio.run_coroutine_threadsafe(self.handle_system_info(payload, gui=True, orig_topic=msg.topic), self.loop)
+            self._submit(self.handle_system_info(payload, gui=True, orig_topic=msg.topic))
         # Add more topic handlers as needed
 
     async def handle_scan_wifi(self, payload, gui=False, orig_topic=None):
@@ -141,6 +155,22 @@ class NetworkManagerMQTT:
             self.publish(topic, json.dumps(network))
 
 
+async def connect_dbus(timeout=10):
+    """Complete the system bus handshake now.
+
+    nm_info opens the bus at import, but sdbus only authenticates it once the
+    event loop services the first D-Bus call. dbus-daemon closes connections
+    that have not authenticated within auth_timeout (30 s), so if the first
+    request arrives later than that, every D-Bus call fails from then on.
+    Any reply completes authentication, so errors here are only logged.
+    """
+    try:
+        devices = await asyncio.wait_for(network_manager.get_devices(), timeout)
+        print(f"D-Bus connected, NetworkManager reports {len(devices)} devices")
+    except Exception as e:
+        print(f"D-Bus warm-up call failed: {e!r}")
+
+
 # Example usage
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
@@ -148,6 +178,7 @@ if __name__ == "__main__":
     nm_mqtt = NetworkManagerMQTT(broker_host='localhost', broker_port=1883)
     nm_mqtt.loop = loop
     try:
+        loop.run_until_complete(connect_dbus())
         nm_mqtt.start()
         loop.run_forever()
     except KeyboardInterrupt:
